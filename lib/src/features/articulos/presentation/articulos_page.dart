@@ -13,12 +13,14 @@ final articulosFutureProvider = FutureProvider.autoDispose<List<Articulo>>((ref)
 class ArticulosPage extends ConsumerWidget {
   const ArticulosPage({super.key});
 
-  Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
-    final codigoController = TextEditingController();
-    final nombreController = TextEditingController();
-    final descripcionController = TextEditingController();
-    final precioController = TextEditingController(text: '0.0');
-    int? selectedCategoriaId;
+  Future<void> _showFormDialog(BuildContext context, WidgetRef ref, [Articulo? articulo]) async {
+    final isEditing = articulo != null;
+    final codigoController = TextEditingController(text: articulo?.codigo ?? '');
+    final nombreController = TextEditingController(text: articulo?.nombre ?? '');
+    final descripcionController = TextEditingController(text: articulo?.descripcion ?? '');
+    final precioController = TextEditingController(text: articulo?.precioBase.toString() ?? '0.0');
+    int? selectedCategoriaId = articulo?.categoriaId;
+    bool isActivo = articulo?.activo ?? true;
     final formKey = GlobalKey<FormState>();
     bool isLoading = false;
 
@@ -33,7 +35,7 @@ class ArticulosPage extends ConsumerWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Nuevo Artículo'),
+              title: Text(isEditing ? 'Editar Artículo' : 'Nuevo Artículo'),
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -68,6 +70,16 @@ class ArticulosPage extends ConsumerWidget {
                         controller: descripcionController,
                         decoration: const InputDecoration(labelText: 'Descripción'),
                       ),
+                      TextFormField(
+                        controller: descripcionController,
+                        decoration: const InputDecoration(labelText: 'Descripción'),
+                      ),
+                      SwitchListTile(
+                        title: const Text('Activo'),
+                        value: isActivo,
+                        onChanged: (val) => setState(() => isActivo = val),
+                        contentPadding: EdgeInsets.zero,
+                      ),
                     ],
                   ),
                 ),
@@ -84,18 +96,23 @@ class ArticulosPage extends ConsumerWidget {
                           if (formKey.currentState!.validate()) {
                             setState(() => isLoading = true);
                             try {
-                              await ref.read(articuloRepositoryProvider).createArticulo({
+                              final data = {
                                 'codigo': codigoController.text.trim(),
                                 'nombre': nombreController.text.trim(),
                                 'descripcion': descripcionController.text.trim(),
                                 'categoria_id': selectedCategoriaId,
                                 'precio_base': double.tryParse(precioController.text) ?? 0.0,
-                                'costo_promedio': 0.0,
-                                'unidad_medida': 'UNIDAD',
-                                'aplica_iva': true,
-                                'aplica_igtf': false,
-                                'activo': true,
-                              });
+                                'costo_promedio': articulo?.costoPromedio ?? 0.0,
+                                'unidad_medida': articulo?.unidadMedida ?? 'UNIDAD',
+                                'aplica_iva': articulo?.aplicaIva ?? true,
+                                'aplica_igtf': articulo?.aplicaIgtf ?? false,
+                                'activo': isActivo,
+                              };
+                              if (isEditing) {
+                                await ref.read(articuloRepositoryProvider).updateArticulo(articulo.articuloId, data);
+                              } else {
+                                await ref.read(articuloRepositoryProvider).createArticulo(data);
+                              }
                               ref.invalidate(articulosFutureProvider);
                               if (context.mounted) Navigator.of(context).pop();
                             } catch (e) {
@@ -119,6 +136,35 @@ class ArticulosPage extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, Articulo articulo) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Artículo'),
+        content: Text('¿Está seguro de que desea eliminar "${articulo.nombre}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && context.mounted) {
+      try {
+        await ref.read(articuloRepositoryProvider).deleteArticulo(articulo.articuloId);
+        ref.invalidate(articulosFutureProvider);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        }
+      }
+    }
   }
 
   @override
@@ -152,9 +198,27 @@ class ArticulosPage extends ConsumerWidget {
                 ),
                 title: Text('${articulo.codigo} - ${articulo.nombre}', style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text('Precio: \$${articulo.precioBase.toStringAsFixed(2)}'),
-                trailing: Switch(
-                  value: articulo.activo,
-                  onChanged: null,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Switch(
+                      value: articulo.activo,
+                      onChanged: null,
+                    ),
+                    PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'edit') {
+                          _showFormDialog(context, ref, articulo);
+                        } else if (value == 'delete') {
+                          _confirmDelete(context, ref, articulo);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                        const PopupMenuItem(value: 'delete', child: Text('Eliminar', style: TextStyle(color: Colors.red))),
+                      ],
+                    ),
+                  ],
                 ),
               );
             },
@@ -164,7 +228,7 @@ class ArticulosPage extends ConsumerWidget {
         error: (error, stack) => Center(child: Text('Error: $error')),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateDialog(context, ref),
+        onPressed: () => _showFormDialog(context, ref),
         child: const Icon(Icons.add),
       ),
     );

@@ -18,6 +18,15 @@ class CategoriaRepository {
     final response = await _dio.post<Map<String, dynamic>>('/api/v1/categorias', data: data);
     return Categoria.fromJson(response.data!);
   }
+
+  Future<Categoria> updateCategoria(int id, Map<String, dynamic> data) async {
+    final response = await _dio.put<Map<String, dynamic>>('/api/v1/categorias/$id', data: data);
+    return Categoria.fromJson(response.data!);
+  }
+
+  Future<void> deleteCategoria(int id) async {
+    await _dio.delete<dynamic>('/api/v1/categorias/$id');
+  }
 }
 
 final categoriaRepositoryProvider = Provider<CategoriaRepository>((ref) {

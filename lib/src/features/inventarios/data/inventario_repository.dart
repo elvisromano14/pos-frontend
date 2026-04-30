@@ -18,6 +18,15 @@ class InventarioRepository {
     final response = await _dio.post<Map<String, dynamic>>('/api/v1/inventarios', data: data);
     return Inventario.fromJson(response.data!);
   }
+
+  Future<Inventario> updateInventario(int id, Map<String, dynamic> data) async {
+    final response = await _dio.put<Map<String, dynamic>>('/api/v1/inventarios/$id', data: data);
+    return Inventario.fromJson(response.data!);
+  }
+
+  Future<void> deleteInventario(int id) async {
+    await _dio.delete<dynamic>('/api/v1/inventarios/$id');
+  }
 }
 
 final inventarioRepositoryProvider = Provider<InventarioRepository>((ref) {

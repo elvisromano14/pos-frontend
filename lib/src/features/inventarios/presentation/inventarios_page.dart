@@ -16,10 +16,11 @@ final inventariosFutureProvider = FutureProvider.autoDispose<List<Inventario>>((
 class InventariosPage extends ConsumerWidget {
   const InventariosPage({super.key});
 
-  Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
-    int? selectedArticuloId;
-    int? selectedAlmacenId;
-    final existenciaController = TextEditingController(text: '0.0');
+  Future<void> _showFormDialog(BuildContext context, WidgetRef ref, [Inventario? inventario]) async {
+    final isEditing = inventario != null;
+    int? selectedArticuloId = inventario?.articuloId;
+    int? selectedAlmacenId = inventario?.almacenId;
+    final existenciaController = TextEditingController(text: inventario?.existencia.toString() ?? '0.0');
     final formKey = GlobalKey<FormState>();
     bool isLoading = false;
 
@@ -35,7 +36,7 @@ class InventariosPage extends ConsumerWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Ajuste de Inventario'),
+              title: Text(isEditing ? 'Ajustar Existencia' : 'Ajuste de Inventario'),
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -48,7 +49,7 @@ class InventariosPage extends ConsumerWidget {
                         items: articulos.map((art) {
                           return DropdownMenuItem(value: art.articuloId, child: Text(art.nombre));
                         }).toList(),
-                        onChanged: (val) => setState(() => selectedArticuloId = val),
+                        onChanged: isEditing ? null : (val) => setState(() => selectedArticuloId = val),
                         validator: (value) => value == null ? 'Requerido' : null,
                       ),
                       DropdownButtonFormField<int>(
@@ -57,7 +58,7 @@ class InventariosPage extends ConsumerWidget {
                         items: almacenes.map((alm) {
                           return DropdownMenuItem(value: alm.almacenId, child: Text(alm.nombre));
                         }).toList(),
-                        onChanged: (val) => setState(() => selectedAlmacenId = val),
+                        onChanged: isEditing ? null : (val) => setState(() => selectedAlmacenId = val),
                         validator: (value) => value == null ? 'Requerido' : null,
                       ),
                       TextFormField(
@@ -82,11 +83,18 @@ class InventariosPage extends ConsumerWidget {
                           if (formKey.currentState!.validate()) {
                             setState(() => isLoading = true);
                             try {
-                              await ref.read(inventarioRepositoryProvider).createInventario({
-                                'articulo_id': selectedArticuloId,
-                                'almacen_id': selectedAlmacenId,
-                                'existencia': double.tryParse(existenciaController.text) ?? 0.0,
-                              });
+                              if (isEditing) {
+                                await ref.read(inventarioRepositoryProvider).updateInventario(
+                                  inventario.inventarioId,
+                                  {'existencia': double.tryParse(existenciaController.text) ?? 0.0},
+                                );
+                              } else {
+                                await ref.read(inventarioRepositoryProvider).createInventario({
+                                  'articulo_id': selectedArticuloId,
+                                  'almacen_id': selectedAlmacenId,
+                                  'existencia': double.tryParse(existenciaController.text) ?? 0.0,
+                                });
+                              }
                               ref.invalidate(inventariosFutureProvider);
                               if (context.mounted) Navigator.of(context).pop();
                             } catch (e) {
@@ -110,6 +118,35 @@ class InventariosPage extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, Inventario inventario, String artNombre, String almNombre) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Registro'),
+        content: Text('¿Está seguro de que desea eliminar el inventario de "$artNombre" en el almacén "$almNombre"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && context.mounted) {
+      try {
+        await ref.read(inventarioRepositoryProvider).deleteInventario(inventario.inventarioId);
+        ref.invalidate(inventariosFutureProvider);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        }
+      }
+    }
   }
 
   @override
@@ -167,20 +204,38 @@ class InventariosPage extends ConsumerWidget {
                   ),
                   title: Text(artNombre, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('En: $almNombre'),
-                  trailing: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: inv.existencia > 0 ? Colors.green.shade100 : Colors.red.shade100,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      inv.existencia.toStringAsFixed(2),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: inv.existencia > 0 ? Colors.green.shade800 : Colors.red.shade800,
-                        fontSize: 16,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: inv.existencia > 0 ? Colors.green.shade100 : Colors.red.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          inv.existencia.toStringAsFixed(2),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: inv.existencia > 0 ? Colors.green.shade800 : Colors.red.shade800,
+                            fontSize: 16,
+                          ),
+                        ),
                       ),
-                    ),
+                      PopupMenuButton<String>(
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            _showFormDialog(context, ref, inv);
+                          } else if (value == 'delete') {
+                            _confirmDelete(context, ref, inv, artNombre, almNombre);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(value: 'edit', child: Text('Ajustar')),
+                          const PopupMenuItem(value: 'delete', child: Text('Eliminar', style: TextStyle(color: Colors.red))),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -191,7 +246,7 @@ class InventariosPage extends ConsumerWidget {
         error: (error, stack) => Center(child: Text('Error: $error')),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showCreateDialog(context, ref),
+        onPressed: () => _showFormDialog(context, ref),
         icon: const Icon(Icons.add),
         label: const Text('Ajuste Inicial'),
       ),

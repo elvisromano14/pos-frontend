@@ -18,6 +18,15 @@ class ArticuloRepository {
     final response = await _dio.post<Map<String, dynamic>>('/api/v1/articulos', data: data);
     return Articulo.fromJson(response.data!);
   }
+
+  Future<Articulo> updateArticulo(int id, Map<String, dynamic> data) async {
+    final response = await _dio.put<Map<String, dynamic>>('/api/v1/articulos/$id', data: data);
+    return Articulo.fromJson(response.data!);
+  }
+
+  Future<void> deleteArticulo(int id) async {
+    await _dio.delete<dynamic>('/api/v1/articulos/$id');
+  }
 }
 
 final articuloRepositoryProvider = Provider<ArticuloRepository>((ref) {

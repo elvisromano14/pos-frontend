@@ -18,6 +18,15 @@ class AlmacenRepository {
     final response = await _dio.post<Map<String, dynamic>>('/api/v1/almacenes', data: data);
     return Almacen.fromJson(response.data!);
   }
+
+  Future<Almacen> updateAlmacen(int id, Map<String, dynamic> data) async {
+    final response = await _dio.put<Map<String, dynamic>>('/api/v1/almacenes/$id', data: data);
+    return Almacen.fromJson(response.data!);
+  }
+
+  Future<void> deleteAlmacen(int id) async {
+    await _dio.delete<dynamic>('/api/v1/almacenes/$id');
+  }
 }
 
 final almacenRepositoryProvider = Provider<AlmacenRepository>((ref) {

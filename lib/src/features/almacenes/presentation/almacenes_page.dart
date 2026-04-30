@@ -12,10 +12,12 @@ final almacenesFutureProvider = FutureProvider.autoDispose<List<Almacen>>((ref) 
 class AlmacenesPage extends ConsumerWidget {
   const AlmacenesPage({super.key});
 
-  Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
-    final nombreController = TextEditingController();
-    final descripcionController = TextEditingController();
-    final direccionController = TextEditingController();
+  Future<void> _showFormDialog(BuildContext context, WidgetRef ref, [Almacen? almacen]) async {
+    final isEditing = almacen != null;
+    final nombreController = TextEditingController(text: almacen?.nombre ?? '');
+    final descripcionController = TextEditingController(text: almacen?.descripcion ?? '');
+    final direccionController = TextEditingController(text: almacen?.direccion ?? '');
+    bool isActivo = almacen?.activo ?? true;
     final formKey = GlobalKey<FormState>();
     bool isLoading = false;
 
@@ -25,7 +27,7 @@ class AlmacenesPage extends ConsumerWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Nuevo Almacén'),
+              title: Text(isEditing ? 'Editar Almacén' : 'Nuevo Almacén'),
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -45,6 +47,16 @@ class AlmacenesPage extends ConsumerWidget {
                         controller: direccionController,
                         decoration: const InputDecoration(labelText: 'Dirección'),
                       ),
+                      TextFormField(
+                        controller: direccionController,
+                        decoration: const InputDecoration(labelText: 'Dirección'),
+                      ),
+                      SwitchListTile(
+                        title: const Text('Activo'),
+                        value: isActivo,
+                        onChanged: (val) => setState(() => isActivo = val),
+                        contentPadding: EdgeInsets.zero,
+                      ),
                     ],
                   ),
                 ),
@@ -61,12 +73,17 @@ class AlmacenesPage extends ConsumerWidget {
                           if (formKey.currentState!.validate()) {
                             setState(() => isLoading = true);
                             try {
-                              await ref.read(almacenRepositoryProvider).createAlmacen({
+                              final data = {
                                 'nombre': nombreController.text.trim(),
                                 'descripcion': descripcionController.text.trim(),
                                 'direccion': direccionController.text.trim(),
-                                'activo': true,
-                              });
+                                'activo': isActivo,
+                              };
+                              if (isEditing) {
+                                await ref.read(almacenRepositoryProvider).updateAlmacen(almacen.almacenId, data);
+                              } else {
+                                await ref.read(almacenRepositoryProvider).createAlmacen(data);
+                              }
                               ref.invalidate(almacenesFutureProvider);
                               if (context.mounted) Navigator.of(context).pop();
                             } catch (e) {
@@ -90,6 +107,35 @@ class AlmacenesPage extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, Almacen almacen) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Almacén'),
+        content: Text('¿Está seguro de que desea eliminar "${almacen.nombre}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && context.mounted) {
+      try {
+        await ref.read(almacenRepositoryProvider).deleteAlmacen(almacen.almacenId);
+        ref.invalidate(almacenesFutureProvider);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        }
+      }
+    }
   }
 
   @override
@@ -120,9 +166,27 @@ class AlmacenesPage extends ConsumerWidget {
                 leading: const CircleAvatar(child: Icon(Icons.store)),
                 title: Text(almacen.nombre, style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text(almacen.descripcion ?? 'Sin descripción'),
-                trailing: Switch(
-                  value: almacen.activo,
-                  onChanged: null,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Switch(
+                      value: almacen.activo,
+                      onChanged: null,
+                    ),
+                    PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'edit') {
+                          _showFormDialog(context, ref, almacen);
+                        } else if (value == 'delete') {
+                          _confirmDelete(context, ref, almacen);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                        const PopupMenuItem(value: 'delete', child: Text('Eliminar', style: TextStyle(color: Colors.red))),
+                      ],
+                    ),
+                  ],
                 ),
               );
             },
@@ -132,7 +196,7 @@ class AlmacenesPage extends ConsumerWidget {
         error: (error, stack) => Center(child: Text('Error: $error')),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateDialog(context, ref),
+        onPressed: () => _showFormDialog(context, ref),
         child: const Icon(Icons.add),
       ),
     );
