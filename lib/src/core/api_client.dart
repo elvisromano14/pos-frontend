@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../features/auth/data/auth_repository.dart';
 
 const String _baseUrl = String.fromEnvironment(
   'API_BASE_URL',
@@ -7,7 +8,7 @@ const String _baseUrl = String.fromEnvironment(
 );
 
 final dioProvider = Provider<Dio>((ref) {
-  return Dio(
+  final dio = Dio(
     BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 10),
@@ -15,4 +16,16 @@ final dioProvider = Provider<Dio>((ref) {
       headers: const {'Content-Type': 'application/json'},
     ),
   );
+
+  dio.interceptors.add(InterceptorsWrapper(
+    onRequest: (options, handler) {
+      final token = ref.read(authTokenProvider);
+      if (token != null && token.isNotEmpty) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
+      return handler.next(options);
+    },
+  ));
+
+  return dio;
 });

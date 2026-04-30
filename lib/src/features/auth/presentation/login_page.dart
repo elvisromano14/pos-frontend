@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../data/auth_repository.dart';
 
@@ -41,17 +42,26 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             password: _passwordController.text,
             tenantSchema: _tenantController.text.trim(),
           );
-      setState(() {
-        _result = token.isEmpty ? 'Login sin token' : 'Login exitoso';
-      });
+      if (token.isNotEmpty) {
+        ref.read(authTokenProvider.notifier).setToken(token);
+        if (mounted) {
+          context.go('/almacenes');
+        }
+      } else {
+        setState(() {
+          _result = 'Login fallido: Token vacío';
+        });
+      }
     } catch (_) {
       setState(() {
         _result = 'No se pudo autenticar contra el backend';
       });
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
